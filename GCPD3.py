@@ -157,7 +157,104 @@ def translate_name(starname):
         return starname  # may be it is ok?
 
 
-class GCPD_table_parser(HTMLParser):
+class HTMLParserPort(HTMLParser):
+    """ Bridge class to bring the utilities of the old htmllib parser in the
+    new HTMLParser in python3
+    """
+
+    def __init__(self, *args, **kw):
+        super().__init__(*args, **kw)
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'th':
+            self.start_th(attrs)
+        elif tag == 'pre':
+            self.start_pre(attrs)
+        elif tag == 'td':
+            self.start_td(attrs)
+        elif tag == 'b':
+            self.start_b(attrs)
+        elif tag == 'table':
+            self.start_table(attrs)
+        elif tag == 'tr':
+            self.start_tr(attrs)
+        elif tag == 'a':
+            self.start_a(attrs)
+        elif tag == 'hr':
+            self.start_hr(attrs)
+        else:
+            pass
+
+    def handle_endtag(self, tag):
+        if tag == 'th':
+            self.end_th()
+        elif tag == 'pre':
+            self.end_pre()
+        elif tag == 'td':
+            self.end_td()
+        elif tag == 'b':
+            self.end_b()
+        elif tag == 'table':
+            self.end_table()
+        elif tag == 'tr':
+            self.end_tr()
+        elif tag == 'a':
+            self.end_a()
+        elif tag == 'hr':
+            self.end_hr()
+        else:
+            pass
+
+    def start_th(self, attr):
+        pass
+
+    def end_th(self):
+        pass
+
+    def start_pre(self, attr):
+        pass
+
+    def end_pre(self):
+        pass
+
+    def start_td(self, attr):
+        pass
+
+    def end_td(self):
+        pass
+
+    def start_b(self, attr):
+        pass
+
+    def end_b(self):
+        pass
+
+    def start_table(self, attr):
+        pass
+
+    def end_table(self):
+        pass
+
+    def start_tr(self, attr):
+        pass
+
+    def end_tr(self):
+        pass
+
+    def start_a(self, attr):
+        pass
+
+    def end_a(self):
+        pass
+
+    def start_hr(self, attr):
+        pass
+
+    def end_hr(self):
+        pass
+
+
+class GCPD_table_parser(HTMLParserPort):
     """ Parse a table describing which systems are available
     for given star
     """
@@ -235,7 +332,7 @@ class GCPD_table_parser(HTMLParser):
 def GCPD_system_list(starname, rem):
     action_url = 'http://obswww.unige.ch/gcpd/cgi-bin/genIndex.cgi'
     params = urllib.parse.urlencode({'ident': translate_name(starname),
-                               'button': 'Query by Star Number'})
+                                     'button': 'Query by Star Number'})
     f = urllib.urlopen(action_url, params)
 
     h = GCPD_table_parser()
@@ -247,7 +344,7 @@ def GCPD_system_list(starname, rem):
     return h.syslist
 
 
-class GCPD_parser(HTMLParser):
+class GCPD_parser(HTMLParserPort):
     """
     """
     metadata = {'Star Name:': 'starname',
@@ -383,7 +480,7 @@ class _GCPD:
         r = ["# data in %s photometric system" % self.system_string]
         for n in self.bands:
             for M in d[n]:
-                if M is float:
+                if type(M) is float:
                     r.append("M   %s %s %s %.4g 0.05 # %s %s" % (target, self.system_common_name, n, M, self.system_common_name, n))
         if references:
             r.append('# References:')
@@ -422,7 +519,7 @@ class _GCPD2:
     def parse_data(self, column_names, lines):
 
         nph = len(lines)
-        splitlines = [l.split() for l in lines]
+        splitlines = [ll.split() for ll in lines]
         d = {}
         for i in range(len(column_names)):
             n = column_names[i].strip()
@@ -440,7 +537,7 @@ class _GCPD2:
     def print_data(self, target, rem, references=True):
         h = self.fetch_data(target, rem)
 
-        photo_lines = [l for l in h.photo_data.split('\n') if len(l.strip()) > 0]
+        photo_lines = [ll for ll in h.photo_data.split('\n') if len(ll.strip()) > 0]
         del h.column_names[0]
         data = self.parse_data(h.column_names, photo_lines)
         d = self.process_data(data)
