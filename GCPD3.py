@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """ A module to check GCPD database
 See http://www.python9.org/p9-zadka.ppt for
 tutorial
