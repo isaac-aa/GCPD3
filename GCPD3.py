@@ -15,6 +15,7 @@ import urllib.request
 import getopt
 import inspect
 import string
+from tqdm import tqdm
 
 
 class GCPD_No_Data(ValueError):
@@ -472,7 +473,59 @@ class _GCPD:
                 # this gets every i-th entry in all nonempty lines
         return d
 
-    def print_data(self, target, rem, references=True):
+    def save_multiple_data(self, targetfile):
+        targets = []
+        rems = []
+        fd = open(targetfile, 'r')
+        ll = fd.readlines()
+        for i, line in enumerate(ll):
+            sp = line.split(';')
+            if len(sp) == 1:
+                targets.append(sp[0].strip())
+                rems.append('')
+            elif len(sp) == 2:
+                targets.append(sp[0].strip())
+                rems.append(sp[1].strip())
+            else:
+                raise ValueError(f"Unable to parse {targetfile}, line {i}:\n{line}")
+
+        # Gather just the first element to get the `photo_lines`
+        h = self.fetch_data(targets[0], rems[0])
+        photo_lines = [ll for ll in h.photo_data.split('\n') if len(ll.strip()) > 0]
+
+        # Gather all data
+        d = {}
+        for target, rem in tqdm(zip(targets, rems), total=len(targets)):
+            print(target)
+            try:
+                h = self.fetch_data(target, rem)
+                photo_lines = [ll for ll in h.photo_data.split('\n') if len(ll.strip()) > 0]
+                data = self.parse_data(h.column_names, photo_lines)
+                d[target] = self.process_data(data)
+            except:
+                d[target] = {p: '' for p in self.bands}
+
+        print(d)
+
+        """
+        with open('output', 'w') as fd:
+            fd.write(f"# data in {self.system_string} photometric system\n")
+            fd.write(f"# Photometric filters are repeated in sequence\n")
+            fd.write('# ' + ';'.join(self.bands) + '\n')
+                measures = max([len(d[n]) for n in self.bands])
+                r = [target]
+                for m in range(measures):
+                    for n in self.bands:
+                        try:
+                            r.append(str(d[n][m]))
+                        except KeyError:
+                            r.append('')
+                fd.write(';'.join(r))
+                fd.write('\n')
+        """
+
+
+    def print_data(self, target, rem='', references=True):
         h = self.fetch_data(target, rem)
         photo_lines = [ll for ll in h.photo_data.split('\n') if len(ll.strip()) > 0]
         data = self.parse_data(h.column_names, photo_lines)
