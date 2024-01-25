@@ -502,7 +502,7 @@ class _GCPD:
                 data = self.parse_data(h.column_names, photo_lines)
                 d[target] = self.process_data(data)
             except:
-                d[target] = {p: float('nan') for p in self.bands}
+                d[target] = {p: [float('nan')] for p in self.bands}
                 fails.append(target)
 
         print("")
@@ -511,22 +511,22 @@ class _GCPD:
         else:
             print(f"Some ({len(fails)}) targets have failed: {', '.join(fails)}")
 
-        """
+        nmax_obs = max([len(d[t][tuple(d[t].keys())[0]]) for t in targets])
         with open('output', 'w') as fd:
             fd.write(f"# data in {self.system_string} photometric system\n")
-            fd.write(f"# Photometric filters are repeated in sequence\n")
             fd.write('# ' + ';'.join(self.bands) + '\n')
-                measures = max([len(d[n]) for n in self.bands])
-                r = [target]
+            for t in targets:
+                #measures = nmax_obs
+                measures = max([len(d[t][n]) for n in self.bands])
+                r = [t]
                 for m in range(measures):
                     for n in self.bands:
                         try:
-                            r.append(str(d[n][m]))
-                        except KeyError:
-                            r.append('')
+                            r.append(f"{d[t][n][m]:.2f}")
+                        except (KeyError, IndexError):
+                            r.append('nan')
                 fd.write(';'.join(r))
                 fd.write('\n')
-        """
 
     def print_data(self, target, rem='', references=True):
         h = self.fetch_data(target, rem)
