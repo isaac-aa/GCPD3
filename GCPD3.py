@@ -16,7 +16,6 @@ import urllib.request
 import getopt
 import inspect
 import string
-from tqdm import tqdm
 
 
 class GCPD_No_Data(ValueError):
@@ -37,7 +36,7 @@ def to_float(str):
     >>> to_float('3.14') # doctest:+ELLIPSIS
     3.14...
     >>> to_float('  ')
-    ''
+    nan
 
     """
     try:
@@ -53,9 +52,9 @@ def safe_add(fl, st):
     >>> safe_add(1,'4')
     5.0
     >>> safe_add(1,'a')
-    ''
+    nan
     >>> safe_add(1,'')
-    ''
+    nan
     """
     try:
         return float(fl) + float(st)
@@ -72,9 +71,9 @@ def safe_sub(fl, st):
     >>> safe_sub(1,'4')
     -3.0
     >>> safe_sub(1,'a')
-    ''
+    nan
     >>> safe_sub(1,'')
-    ''
+    nan
 
     """
     try:
@@ -88,7 +87,7 @@ def safe_sub(fl, st):
 def add_list(l1, l2):
     """Helper function for parsing data with some data omitted.
     >>> add_list([1,'4.56', '*'], ['-1', '100', '1000']) #doctest: +NORMALIZE_WHITESPACE
-    [0.0, 104.56, '']
+    [0.0, 104.56, nan]
 
     """
     r = []
@@ -106,7 +105,7 @@ def add_list(l1, l2):
 def sub_list(l1, l2):
     """Helper function for parsing data with some data omitted.
     >>> sub_list([1,'4.75', '*'], ['-1', 1, '1000']) #doctest: +NORMALIZE_WHITESPACE
-    [2.0, 3.75, '']
+    [2.0, 3.75, nan]
 
 
     """
@@ -591,9 +590,8 @@ class _GCPD2:
                 # this gets every i-th entry in all nonempty lines
         return d
 
-    def print_data(self, target, rem, references=True):
+    def print_data(self, target, rem='', references=True):
         h = self.fetch_data(target, rem)
-
         photo_lines = [ll for ll in h.photo_data.split('\n') if len(ll.strip()) > 0]
         del h.column_names[0]
         data = self.parse_data(h.column_names, photo_lines)
@@ -625,7 +623,7 @@ class GCPD_Photometry_UBV(_GCPD):
     >>> g=GCPD_Photometry_UBV()
     >>> g.bands
     ['U', 'B', 'V']
-    >>> print*g.print_data('HD184313')) #doctest: +NORMALIZE_WHITESPACE
+    >>> print(g.print_data('HD184313', references=False)) #doctest: +NORMALIZE_WHITESPACE
     # data in UBV photometric system
     M   HD184313 Johnson U 9.35 0.05 # Johnson U
     M   HD184313 Johnson U 9.63 0.05 # Johnson U
@@ -633,17 +631,6 @@ class GCPD_Photometry_UBV(_GCPD):
     M   HD184313 Johnson B 8.13 0.05 # Johnson B
     M   HD184313 Johnson V 6.33 0.05 # Johnson V
     M   HD184313 Johnson V 6.45 0.05 # Johnson V
-    # References:
-    #
-    # Author: Wisse P.N.J.
-    # Journal: (1981) Astron. Astrophys. Suppl. 44, 273
-    # Title: Three colour observations of southern red variable giant stars
-    # BibcodeURL: http://adsabs.harvard.edu/cgi-bin/bib_query?1981A%26AS%2E%2E%2E44%2E%2E273W
-    #
-    # Author: Eggen O.J.
-    # Journal: (1973) Mem. Roy. Astron. Soc. 77, 159
-    # Title: Some small amplitude red variables of the disk and and halo  populations
-    #
     """
     system_string = 'UBV'
     system_common_name = 'Johnson'
@@ -805,7 +792,7 @@ class GCPD_Photometry_Vilnius(_GCPD):
    >>> g=GCPD_Photometry_Vilnius()
    >>> g.bands
    ['U', 'P', 'X', 'Y', 'Z', 'V', 'S']
-   >>> print g.print_data('HD432',references=False)  #doctest: +NORMALIZE_WHITESPACE
+   >>> print(g.print_data('HD432',references=False))  #doctest: +NORMALIZE_WHITESPACE
    # data in Vilnius photometric system
    M   HD432 Vilnius U 4.51 0.05 # Vilnius U
    M   HD432 Vilnius U 4.56 0.05 # Vilnius U
@@ -838,7 +825,8 @@ class GCPD_Photometry_Vilnius(_GCPD):
         P = [safe_add(x, px) for x, px in zip(X, d['P-X'])]
         U = [safe_add(p, up) for p, up in zip(P, d['U-P'])]
 
-        return dict([(k, locals()[k]) for k in self.bands])
+        loc = locals()
+        return {k: loc[k] for k in self.bands}
 
 
 class GCPD_Photometry_Straizys(GCPD_Photometry_Vilnius):
@@ -854,19 +842,39 @@ class GCPD_Photometry_ubvy(_GCPD):
 
     Example:
     >>> g=GCPD_Photometry_ubvy() #doctest: +NORMALIZE_WHITESPACE
-    >>> print(g.print_data('HD172167',references=False))
+    >>> print(g.print_data('HD172167', references=False))
     # data in uvby photometric system
-    M   HD172167 Stromgren u 1.007 0.05 # Stromgren u
-    M   HD172167 Stromgren u 0.928 0.05 # Stromgren u
-    M   HD172167 Stromgren b -0.134 0.05 # Stromgren b
-    M   HD172167 Stromgren b -0.161 0.05 # Stromgren b
-    M   HD172167 Stromgren v 0.04 0.05 # Stromgren v
-    M   HD172167 Stromgren v 0 0.05 # Stromgren v
-    M   HD172167 Stromgren y -0.128 0.05 # Stromgren y
-    M   HD172167 Stromgren y -0.165 0.05 # Stromgren y
+    M   HD172167 Stromgren u nan 0.05 # Stromgren u
+    M   HD172167 Stromgren u nan 0.05 # Stromgren u
+    M   HD172167 Stromgren u 1.523 0.05 # Stromgren u
+    M   HD172167 Stromgren u 1.415 0.05 # Stromgren u
+    M   HD172167 Stromgren u nan 0.05 # Stromgren u
+    M   HD172167 Stromgren u nan 0.05 # Stromgren u
+    M   HD172167 Stromgren b nan 0.05 # Stromgren b
+    M   HD172167 Stromgren b nan 0.05 # Stromgren b
+    M   HD172167 Stromgren b 0.034 0.05 # Stromgren b
+    M   HD172167 Stromgren b 0.004 0.05 # Stromgren b
+    M   HD172167 Stromgren b nan 0.05 # Stromgren b
+    M   HD172167 Stromgren b nan 0.05 # Stromgren b
+    M   HD172167 Stromgren v nan 0.05 # Stromgren v
+    M   HD172167 Stromgren v nan 0.05 # Stromgren v
+    M   HD172167 Stromgren v 0.208 0.05 # Stromgren v
+    M   HD172167 Stromgren v 0.165 0.05 # Stromgren v
+    M   HD172167 Stromgren v nan 0.05 # Stromgren v
+    M   HD172167 Stromgren v nan 0.05 # Stromgren v
+    M   HD172167 Stromgren y nan 0.05 # Stromgren y
+    M   HD172167 Stromgren y nan 0.05 # Stromgren y
+    M   HD172167 Stromgren y 0.04 0.05 # Stromgren y
+    M   HD172167 Stromgren y 0 0.05 # Stromgren y
+    M   HD172167 Stromgren y nan 0.05 # Stromgren y
+    M   HD172167 Stromgren y nan 0.05 # Stromgren y
     M   HD172167 Stromgren beta 2.907 0.05 # Stromgren beta
+    M   HD172167 Stromgren beta nan 0.05 # Stromgren beta
+    M   HD172167 Stromgren beta nan 0.05 # Stromgren beta
+    M   HD172167 Stromgren beta nan 0.05 # Stromgren beta
     M   HD172167 Stromgren beta 2.903 0.05 # Stromgren beta
-   """
+    M   HD172167 Stromgren beta nan 0.05 # Stromgren beta
+    """
     system_string = 'uvby'
     system_common_name = 'Stromgren'
     bands = ['u', 'b', 'v', 'y', 'beta']
@@ -891,7 +899,8 @@ class GCPD_Photometry_ubvy(_GCPD):
 
         beta = [to_float(bb) for bb in d['beta']]
 
-        return dict([(k, locals()[k]) for k in self.bands])
+        loc = locals()
+        return {k: loc[k] for k in self.bands}
 
 
 class GCPD_Photometry_Geneva(_GCPD):
@@ -954,8 +963,8 @@ class GCPD_Photometry_Walraven(_GCPD):
         W = [safe_sub(u, uw) for u, uw in zip(U, d['U-W'])]
         L = [safe_sub(b, bl) for b, bl in zip(B, d['B-L'])]
         VJ = [to_float(s) for s in d['VJ']]
-        return {'V': V, 'B': B, 'U': U, 'W': W, 'L': L, 'VJ': VJ}
-        """return dict([(k,locals()[k]) for k in self.bands])"""
+        loc = locals()
+        return {b: loc[b] for b in self.bands}
 
 
 class GCPD_Photometry_DDO(_GCPD):
@@ -965,7 +974,8 @@ class GCPD_Photometry_DDO(_GCPD):
     Example:
     >>> dd=GCPD_Photometry_DDO()
     >>> dd.bands
-    ['48', '51', '45', '42', '41', '38', '35']
+    ['m48', 'm51', 'm45', 'm42', 'm41', 'm38', 'm35']
+    >>> print(dd.print_data('-206700604'))
     # data in DDO photometric system
     M   -206700604 DDO 48 10.86 0.05 # DDO 48
     M   -206700604 DDO 45 12.13 0.05 # DDO 45
@@ -985,7 +995,8 @@ class GCPD_Photometry_DDO(_GCPD):
         V38 = add_list(V41, d['C3841'])
         V35 = add_list(V38, d['C3538'])
 
-        return dict([(b, locals()['V' + string.lstrip(b, 'm')]) for b in self.bands])
+        loc = locals()
+        return {b: loc['V' + string.lstrip(b, 'm')] for b in self.bands}
 
 
 class GCPD_Photometry_Oja(_GCPD):
@@ -1001,7 +1012,8 @@ class GCPD_Photometry_Oja(_GCPD):
         M42 = add_list(M45, d['ge'])
         M41 = add_list(M42, d['ce'])
 
-        return dict([(b, locals()['M' + string.lstrip(b, 'm')]) for b in self.bands])
+        loc = locals()
+        return {b: loc['M' + string.lstrip(b, 'm')] for b in self.bands}
 
 
 class GCPD_Photometry_13_color(_GCPD):
@@ -1026,7 +1038,8 @@ class GCPD_Photometry_13_color(_GCPD):
         M86 = sub_list(M58, d['86-58'])
         M99 = sub_list(M58, d['99-58'])
         M110 = sub_list(M58, d['110-58'])
-        return dict([(b, locals()['M' + string.lstrip(b, 'm')]) for b in self.bands])
+        loc = locals()
+        return {b: loc['M' + string.lstrip(b, 'm')] for b in self.bands}
 
 
 class GCPD_Photometry_Alexander(_GCPD2):
@@ -1043,7 +1056,8 @@ class GCPD_Photometry_Alexander(_GCPD2):
         M710 = add_list(M746, d['7100-7460'])
         M683 = add_list(M710, d['6830-7100'])
 
-        return dict([(b, locals()['M' + string.lstrip(b, 'm')]) for b in self.bands])
+        loc = locals()
+        return {b: loc['M' + string.lstrip(b, 'm')] for b in self.bands}
 
 
 class GCPD_Photometry_WBVR(_GCPD):
@@ -1054,6 +1068,7 @@ class GCPD_Photometry_WBVR(_GCPD):
     >>> wb=GCPD_Photometry_WBVR()
     >>> wb.bands
     ['W', 'B', 'V', 'R']
+    >>> wb.print_data('Vega')
     # data in WBVR photometric system
     M   Vega WBVR W 0.083 0.05 # WBVR W
     M   Vega WBVR B 0.039 0.05 # WBVR B
@@ -1071,7 +1086,8 @@ class GCPD_Photometry_WBVR(_GCPD):
         B = add_list(V, d['B-V'])
         W = add_list(B, d['W-B'])
         R = sub_list(V, d['V-R'])
-        return dict([(b, locals()[b]) for b in self.bands])
+        loc = locals()
+        return {b: loc[b] for b in self.bands}
 
 
 class GCPD_Photometry_Washington(_GCPD):
@@ -1082,11 +1098,17 @@ class GCPD_Photometry_Washington(_GCPD):
     >>> wb=GCPD_Photometry_Washington()
     >>> wb.bands
     ['V', 'C', 'M', 'T1', 'T2']
+    >>> print(wb.print_data('HD142860', references=False))
     # data in Washington photometric system
+    M   HD142860 Washington V nan 0.05 # Washington V
     M   HD142860 Washington V 3.85 0.05 # Washington V
+    M   HD142860 Washington C nan 0.05 # Washington C
     M   HD142860 Washington C 4.376 0.05 # Washington C
+    M   HD142860 Washington M nan 0.05 # Washington M
     M   HD142860 Washington M 3.989 0.05 # Washington M
+    M   HD142860 Washington T1 nan 0.05 # Washington T1
     M   HD142860 Washington T1 3.582 0.05 # Washington T1
+    M   HD142860 Washington T2 nan 0.05 # Washington T2
     M   HD142860 Washington T2 3.297 0.05 # Washington T2
     """
     system_string = 'Washington'
@@ -1100,7 +1122,8 @@ class GCPD_Photometry_Washington(_GCPD):
         C = add_list(M, d['C-M'])
         T2 = sub_list(T1, d['T1-T2'])
         M51 = [to_float(s) for s in d['M51']]
-        return dict([(b, locals()[b]) for b in self.bands])
+        loc = locals()
+        return {b: loc[b] for b in self.bands}
 
 
 photo_translate_name = {'(RI)Cousins': 'RI_Cousins',
@@ -1130,7 +1153,7 @@ def printhelp(fd=sys.stderr):
     try:
         scriptname = __file__
     except NameError:
-        scriptname = 'GCPD.py'
+        scriptname = 'GCPD3.py'
     photolist = ', '.join([translate_photo_name(s) for s in supported_systems])
     print("""Invoke this script this way:
 
@@ -1212,7 +1235,6 @@ def main(argv=None):
             printhelp()
 
     except Usage:
-        print(Usage.msg, file=sys.stderr)
         printhelp()
         return 1
 
