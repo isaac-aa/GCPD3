@@ -8,6 +8,7 @@ but if we want to distribute it we  want to minimize external dependencies
 we may want to do something simpler....
 """
 import re
+import os
 from html.parser import HTMLParser
 import sys
 import urllib.parse
@@ -42,7 +43,7 @@ def to_float(str):
     try:
         return float(str)
     except ValueError:
-        return ''
+        return float('nan')
 
 
 def safe_add(fl, st):
@@ -59,9 +60,9 @@ def safe_add(fl, st):
     try:
         return float(fl) + float(st)
     except ValueError:
-        return ''
+        return float('nan')
     except TypeError:
-        return ''
+        return float('nan')
 
 
 def safe_sub(fl, st):
@@ -79,9 +80,9 @@ def safe_sub(fl, st):
     try:
         return float(fl) - float(st)
     except ValueError:
-        return ''
+        return float('nan')
     except TypeError:
-        return ''
+        return float('nan')
 
 
 def add_list(l1, l2):
@@ -96,9 +97,9 @@ def add_list(l1, l2):
             r.append(float(x1) + float(x2))
 
         except ValueError:
-            r.append('')
+            r.append(float('nan'))
         except TypeError:
-            r.append('')
+            r.append(float('nan'))
     return r
 
 
@@ -115,9 +116,9 @@ def sub_list(l1, l2):
             r.append(float(x1) - float(x2))
 
         except ValueError:
-            r.append('')
+            r.append(float('nan'))
         except TypeError:
-            r.append('')
+            r.append(float('nan'))
     return r
 
 
@@ -440,7 +441,7 @@ class _GCPD:
     query_type = 'original'
     GCPD_action = "http://obswww.unige.ch/gcpd/cgi-bin/photoSys.cgi?"
 
-    def fetch_data(self, starname, rem):
+    def fetch_data(self, starname, rem=''):
         d = {}
         d['phot'] = self.system_string
         d['type'] = self.query_type                # as mean or ...
@@ -479,33 +480,37 @@ class _GCPD:
         fd = open(targetfile, 'r')
         ll = fd.readlines()
         for i, line in enumerate(ll):
-            sp = line.split(';')
-            if len(sp) == 1:
-                targets.append(sp[0].strip())
-                rems.append('')
-            elif len(sp) == 2:
-                targets.append(sp[0].strip())
-                rems.append(sp[1].strip())
-            else:
-                raise ValueError(f"Unable to parse {targetfile}, line {i}:\n{line}")
-
-        # Gather just the first element to get the `photo_lines`
-        h = self.fetch_data(targets[0], rems[0])
-        photo_lines = [ll for ll in h.photo_data.split('\n') if len(ll.strip()) > 0]
+            if line.strip()[0] != '#':
+                sp = line.split(';')
+                if len(sp) == 1:
+                    targets.append(sp[0].strip())
+                    rems.append('')
+                elif len(sp) == 2:
+                    targets.append(sp[0].strip())
+                    rems.append(sp[1].strip())
+                else:
+                    raise ValueError(f"Unable to parse {targetfile}, line {i}:\n{line}")
 
         # Gather all data
         d = {}
-        for target, rem in tqdm(zip(targets, rems), total=len(targets)):
-            print(target)
+        ntargets = len(targets)
+        fails = []
+        for i, (target, rem) in enumerate(zip(targets, rems)):
+            print(f"{i+1}/{ntargets} : {target:<10} {rem:<10}", end='\r')
             try:
                 h = self.fetch_data(target, rem)
                 photo_lines = [ll for ll in h.photo_data.split('\n') if len(ll.strip()) > 0]
                 data = self.parse_data(h.column_names, photo_lines)
                 d[target] = self.process_data(data)
             except:
-                d[target] = {p: '' for p in self.bands}
+                d[target] = {p: float('nan') for p in self.bands}
+                fails.append(target)
 
-        print(d)
+        print("")
+        if len(fails) == 0:
+            print(f"All ({ntargets}) targets succesfully gathered")
+        else:
+            print(f"Some ({len(fails)}) targets have failed: {', '.join(fails)}")
 
         """
         with open('output', 'w') as fd:
@@ -523,7 +528,6 @@ class _GCPD:
                 fd.write(';'.join(r))
                 fd.write('\n')
         """
-
 
     def print_data(self, target, rem='', references=True):
         h = self.fetch_data(target, rem)
@@ -554,7 +558,7 @@ class _GCPD2:
     query_type = 'original'
     GCPD_action = "http://obswww.unige.ch/gcpd/cgi-bin/photoSys.cgi?"
 
-    def fetch_data(self, starname, rem):
+    def fetch_data(self, starname, rem=''):
         d = {}
         d['phot'] = self.system_string
         d['type'] = self.query_type                # as mean or ...
@@ -1185,14 +1189,17 @@ def main(argv=None):
             for ph in photosystem:
                 if ph in PHOTOMETRY_classes:
                     cl = PHOTOMETRY_classes[ph]
-                    try:
-                        print(cl().print_data(target, rem))
-                    except IOError:
-                        print("# IOEror")
-                    except StarNameException:
-                        print("# star %s not found" % target)
-                    except GCPD_No_Data:
-                        print("# No data for star %s in photosystem %s" % (target, photosystem))
+                    if os.path.exists(target):
+                        cl().save_multiple_data('list.txt')
+                    else:
+                        try:
+                            print(cl().print_data(target, rem))
+                        except IOError:
+                            print("# IOEror")
+                        except StarNameException:
+                            print("# star %s not found" % target)
+                        except GCPD_No_Data:
+                            print("# No data for star %s in photosystem %s" % (target, photosystem))
 
         elif systemlist and target:
             try:
