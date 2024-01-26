@@ -1213,7 +1213,7 @@ def main(argv=None):
                 if ph in PHOTOMETRY_classes:
                     cl = PHOTOMETRY_classes[ph]
                     if os.path.exists(target):
-                        cl().save_multiple_data('list.txt')
+                        cl(query_type).save_multiple_data(target)
                     else:
                         try:
                             print(cl().print_data(target, rem))
