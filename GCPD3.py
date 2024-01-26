@@ -10,6 +10,8 @@ we may want to do something simpler....
 import re
 import os
 from html.parser import HTMLParser
+from math import isnan
+import itertools
 import sys
 import urllib.parse
 import urllib.request
@@ -363,6 +365,7 @@ class GCPD_parser(HTMLParserPort):
         self.references = []
         self.metadata_section = 0
         self.inside_h3 = False
+        self.inside_pre = False
         # self.starting_ref=False
 
     def inside_ref_section(self):
@@ -372,6 +375,7 @@ class GCPD_parser(HTMLParserPort):
         return self.hr_number == self.metadata_section + 1
 
     def start_pre(self, data):
+        self.inside_pre = True
         if self.inside_ref_section():
             self.current_reference = {}
 
@@ -379,6 +383,7 @@ class GCPD_parser(HTMLParserPort):
         """ Photometry data -- the last before /pre
         This simple algorithm chokes on 13-color photometry system
         """
+        self.inside_pre = False
         if self.inside_data_section():
             self.photo_data = self.last_postb_data
             self.column_names = self.b_name.split('\t')
@@ -432,13 +437,17 @@ class GCPD_parser(HTMLParserPort):
     def start_hr(self, attrs):
         """ Horizontal rulers separate sections
         """
-        self.hr_number += 1
+        if self.inside_pre:
+            self.hr_number += 1
 
 
 class _GCPD:
     ""
-    query_type = 'original'
     GCPD_action = "http://obswww.unige.ch/gcpd/cgi-bin/photoSys.cgi?"
+
+    def __init__(self, query_type='mean'):
+        # TODO: This should be better implemented as derived classes...
+        self.query_type = query_type
 
     def fetch_data(self, starname, rem=''):
         d = {}
@@ -473,7 +482,7 @@ class _GCPD:
                 # this gets every i-th entry in all nonempty lines
         return d
 
-    def save_multiple_data(self, targetfile):
+    def save_multiple_data(self, targetfile, outputfile):
         targets = []
         rems = []
         fd = open(targetfile, 'r')
@@ -512,32 +521,56 @@ class _GCPD:
             print(f"Some ({len(fails)}) targets have failed: {', '.join(fails)}")
 
         nmax_obs = max([len(d[t][tuple(d[t].keys())[0]]) for t in targets])
-        with open('output', 'w') as fd:
-            fd.write(f"# data in {self.system_string} photometric system\n")
-            fd.write('# ' + ';'.join(self.bands) + '\n')
-            for t in targets:
-                #measures = nmax_obs
-                measures = max([len(d[t][n]) for n in self.bands])
-                r = [t]
-                for m in range(measures):
-                    for n in self.bands:
-                        try:
-                            r.append(f"{d[t][n][m]:.2f}")
-                        except (KeyError, IndexError):
-                            r.append('nan')
-                fd.write(';'.join(r))
-                fd.write('\n')
+        with open(outputfile, 'w') as fd:
+            fd.write(f"# {self.query_type} data in {self.system_string} photometric system\n")
+            header = "# starname;"
+            if self.query_type == "mean":
+                bands_err = [f"{b}_err" for b in self.bands]
+                header += ';'.join(list(itertools.chain(*zip(self.bands, bands_err))))
+            elif self.query_type == "original":
+                header += ';'.join(self.bands)
 
-    def print_data(self, target, rem='', references=True):
+            header += '\n'
+            fd.write(header)
+            for t in targets:
+                if self.query_type == "original":
+                    measures = max([len(d[t][n]) for n in self.bands])
+                    r = [t]
+                    for m in range(measures):
+                        for n in self.bands:
+                            try:
+                                r.append(f"{d[t][n][m]:.4g}")
+                            except (KeyError, IndexError):
+                                r.append('nan')
+                    fd.write(';'.join(r))
+                    fd.write('\n')
+                elif self.query_type == "mean":
+                    r = [t]
+                    for n in self.bands:
+                        for m in range(2):
+                            try:
+                                r.append(f"{d[t][n][m]:.4g}")
+                            except (KeyError, IndexError):
+                                r.append('nan')
+                    fd.write(';'.join(r))
+                    fd.write('\n')
+
+    def print_data(self, target, rem='', references=False):
         h = self.fetch_data(target, rem)
         photo_lines = [ll for ll in h.photo_data.split('\n') if len(ll.strip()) > 0]
         data = self.parse_data(h.column_names, photo_lines)
         d = self.process_data(data)
-        r = ["# data in %s photometric system" % self.system_string]
+        r = [f"# {self.query_type} data in {self.system_string} photometric system"]
         for n in self.bands:
-            for M in d[n]:
-                if type(M) is float:
-                    r.append("M   %s %s %s %.4g 0.05 # %s %s" % (target, self.system_common_name, n, M, self.system_common_name, n))
+            if self.query_type == "mean":
+                if not isnan(d[n][0]):
+                    r.append(f"{target} {self.system_common_name} {n} {d[n][0]:.4g} {d[n][1]:.4g}")
+            elif self.query_type == "original":
+                for M in d[n]:
+                    if not isnan(M):
+                        r.append(f"{target} {self.system_common_name} {n} {M:.4g} 0.05")
+            else:
+                raise ValueError("Invalid query type")
         if references:
             r.append('# References:')
             r.append('#')
@@ -1184,11 +1217,13 @@ class Usage(Exception):
 
 def main(argv=None):
     rem = ''
+    query_type = 'original'
+    outputfile = 'output.txt'
     if argv is None:
         argv = sys.argv
     try:
         try:
-            opts, args = getopt.getopt(argv[1:], "h", ["help", "target=", "system=", "test", "systemlist", 'rem='])
+            opts, args = getopt.getopt(argv[1:], "h", ["help", "target=", "system=", "test", "systemlist", "rem=", "mean", "output="])
         except getopt.GetoptError as err:
             raise Usage(err)
         target, photosystem, systemlist = None, [], None
@@ -1207,16 +1242,20 @@ def main(argv=None):
                 sys.exit(0)
             if opt in ['--systemlist']:
                 systemlist = True
+            if opt in ['--mean']:
+                query_type = 'mean'
+            if opt == '--output':
+                outputfile = val
 
         if target and photosystem:
             for ph in photosystem:
                 if ph in PHOTOMETRY_classes:
                     cl = PHOTOMETRY_classes[ph]
                     if os.path.exists(target):
-                        cl(query_type).save_multiple_data(target)
+                        cl(query_type).save_multiple_data(target, outputfile)
                     else:
                         try:
-                            print(cl().print_data(target, rem))
+                            print(cl(query_type).print_data(target, rem))
                         except IOError:
                             print("# IOEror")
                         except StarNameException:
